@@ -1,0 +1,17 @@
+name: expressive_snack
+description: "A Material 3 Expressive take on the snackbar: spring physics pills that stack like cards."
+version: 1.0.0
+publish_to: "none"
+
+environment:
+  sdk: ^3.13.0
+  flutter: '>=3.47.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  material_ui: ^1.9.0
+  cupertino_ui: ^1.1.5
+  expressive_shapes:
+    path: ../expressive_shapes
+  motor: ^1.1.0

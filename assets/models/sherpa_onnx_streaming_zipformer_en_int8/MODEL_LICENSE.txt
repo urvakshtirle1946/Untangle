@@ -1,0 +1,11 @@
+Model: sherpa-onnx-streaming-zipformer-en-2023-06-26
+Model author: k2-fsa / csukuangfj
+Model license: Apache License 2.0
+Model source: https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-en-2023-06-26
+
+This directory contains only the INT8 left-128 streaming transducer files,
+tokens.txt, and bpe.model. The full model archive and floating-point variants
+are not included.
+
+The sherpa_onnx Flutter package and its native runtime are also Apache-2.0:
+https://github.com/k2-fsa/sherpa-onnx

@@ -1,0 +1,5 @@
+{
+  "_comment": "Client-safe values are supplied from local .env at build time.",
+  "SUPABASE_URL": "YOUR_SUPABASE_PROJECT_URL",
+  "SUPABASE_PUBLISHABLE_KEY": "YOUR_SUPABASE_ANON_KEY"
+}

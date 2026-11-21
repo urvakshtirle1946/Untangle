@@ -1,0 +1,2 @@
+[functions.nvidia-chat]
+verify_jwt = true

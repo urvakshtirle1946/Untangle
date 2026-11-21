@@ -1,0 +1,201 @@
+import 'package:bunpod/bunpod.dart';
+import 'package:material_ui/material_ui.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+
+class MenuPage extends StatelessWidget {
+  const MenuPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: _AppBar(),
+      body: _Body(),
+    );
+  }
+}
+
+class _Body extends StatefulWidget {
+  const _Body();
+
+  @override
+  State<_Body> createState() => _BodyState();
+}
+
+class _BodyState extends State<_Body> {
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: .fromLTRB(
+        16,
+        8,
+        16,
+        BottomPadding.of(context),
+      ),
+      children: [
+        const MenuHeader(),
+        32.gap,
+        MenuSection(
+          label: 'Library',
+          children: [
+            // MenuTile(
+            //   icon: Icons.download_outlined,
+            //   title: 'Downloads',
+            //   onTap: () {
+            //     Navigator.of(context).push(
+            //       MaterialPageRoute(
+            //         builder: (_) {
+            //           return DownloadsPage();
+            //         },
+            //       ),
+            //     );
+            //   },
+            // ),
+            // MenuTile(
+            //   icon: Icons.history_outlined,
+            //   title: 'Listening history',
+            //   onTap: () {
+            //     ComingSoon.show(context);
+            //   },
+            // ),
+            MenuTile(
+              icon: Icons.podcasts_outlined,
+              title: 'Subscriptions',
+              onTap: () {
+                Navigator.of(context).push(SubscriptionsPage.route());
+              },
+            ),
+          ],
+        ),
+        32.gap,
+        MenuSection(
+          label: 'Preferences',
+          children: [
+            MenuTile(
+              icon: Icons.brightness_6_outlined,
+              title: 'Theme',
+              trailing: BlocBuilder<ThemeModeCubit, ThemeMode>(
+                bloc: locator<ThemeModeCubit>(),
+                builder: (context, themeMode) {
+                  return SegmentedButton<ThemeMode>(
+                    showSelectedIcon: false,
+                    style: const ButtonStyle(
+                      visualDensity: .compact,
+                      tapTargetSize: .shrinkWrap,
+                    ),
+                    segments: const [
+                      ButtonSegment(
+                        value: .system,
+                        icon: Icon(Icons.brightness_auto_rounded),
+                        tooltip: 'System',
+                      ),
+                      ButtonSegment(
+                        value: .light,
+                        icon: Icon(Icons.light_mode_rounded),
+                        tooltip: 'Light',
+                      ),
+                      ButtonSegment(
+                        value: .dark,
+                        icon: Icon(Icons.dark_mode_rounded),
+                        tooltip: 'Dark',
+                      ),
+                    ],
+                    selected: {themeMode},
+                    onSelectionChanged: (selection) {
+                      locator<ThemeModeCubit>().set(selection.first);
+
+                      HapticsHelper.selection();
+                    },
+                  );
+                },
+              ),
+            ),
+            // MenuTile(
+            //   icon: Icons.download_outlined,
+            //   title: 'Download over Wi-Fi only',
+            //   trailing: Switch(
+            //     value: _wifiOnly,
+            //     // Off means "any network", which no single icon says
+            //     // honestly — the X just negates the label.
+            //     thumbIcon: const WidgetStateProperty<Icon?>.fromMap({
+            //       WidgetState.selected: Icon(Icons.wifi_rounded),
+            //       WidgetState.any: Icon(Icons.close_rounded),
+            //     }),
+            //     onChanged: (value) {
+            //       setState(() => _wifiOnly = value);
+            //     },
+            //   ),
+            // ),
+            // MenuTile(
+            //   icon: Icons.notifications_outlined,
+            //   title: 'New episode alerts',
+            //   trailing: Switch(
+            //     value: _alerts,
+            //     // The tile's leading icon already says "notifications";
+            //     // a bell on the thumb would repeat it.
+            //     thumbIcon: const WidgetStateProperty<Icon?>.fromMap({
+            //       WidgetState.selected: Icon(Icons.check_rounded),
+            //       WidgetState.any: Icon(Icons.close_rounded),
+            //     }),
+            //     onChanged: (value) {
+            //       setState(() => _alerts = value);
+            //     },
+            //   ),
+            // ),
+          ],
+        ),
+        32.gap,
+        MenuSection(
+          label: 'Support',
+          children: [
+            // MenuTile(
+            //   icon: Icons.workspace_premium_outlined,
+            //   title: 'Support the developer',
+            //   background: cs.secondaryContainer,
+            //   foreground: cs.onSecondaryContainer,
+            //   onTap: () {
+            //     ComingSoon.show(context);
+            //   },
+            // ),
+            MenuTile(
+              icon: Icons.lightbulb_outlined,
+              title: 'Suggest a feature',
+              onTap: () => ContactSupport.suggestFeature(context),
+            ),
+            MenuTile(
+              icon: Icons.alternate_email_outlined,
+              title: 'Report an issue',
+              onTap: () => ContactSupport.open(context),
+            ),
+          ],
+        ),
+        32.gap,
+        MenuSection(
+          label: 'Account',
+          children: [
+            const LogoutTile(),
+            const DeleteAccountTile(),
+          ],
+        ),
+        64.gap,
+        const VersionIndicator(),
+        8.gap,
+        const DeveloperSignature(),
+        16.gap,
+      ],
+    );
+  }
+}
+
+class _AppBar extends StatelessWidget implements PreferredSizeWidget {
+  const _AppBar();
+
+  @override
+  Widget build(BuildContext context) {
+    return AppBar(
+      leading: const StyledBackButton(),
+    );
+  }
+
+  @override
+  Size get preferredSize => Size.fromHeight(kToolbarHeight);
+}

@@ -1,0 +1,12 @@
+BunPod
+Copyright 2026 Kamran Bekirov
+https://bunpod.app
+
+----
+Untangle
+Untangle is based on BunPod by Kamran Bekirov (https://github.com/kamranbekirovyz/bunpod),
+used under the Apache License 2.0 with the author's written confirmation (November 2026).
+
+Modifications by Urvaksh Tirle include: Sherpa-based Conversation and Record
+transcription, Record save fixes, Type tab save, feedback email drafts, and other changes.
+See CHANGES.md.
