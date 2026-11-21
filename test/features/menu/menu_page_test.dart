@@ -71,4 +71,22 @@ void main() {
       );
     },
   );
+
+  testWidgets('Subscriptions entry opens the empty subscriptions screen', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const MaterialApp(home: MenuPage()));
+    await tester.pump();
+
+    final Finder subscriptionsEntry = find.text('Subscriptions');
+    await tester.ensureVisible(subscriptionsEntry);
+    await tester.tap(subscriptionsEntry);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(find.text('Subscriptions'), findsOneWidget);
+    expect(find.text('No subscriptions yet'), findsOneWidget);
+    expect(find.byType(ListView), findsNothing);
+    expect(find.byIcon(Icons.podcasts_rounded), findsNothing);
+  });
 }

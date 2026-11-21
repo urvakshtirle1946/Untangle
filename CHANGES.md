@@ -16,6 +16,7 @@ relative to BunPod revision 835e843.
 - Player: player page, controls, screen layout and audio player handlers.
 - Profile and subscriptions: user model and cubit updates, subscriptions cubit update.
 - Settings: feedback and issue reports open an email draft.
+- Subscriptions: the screen now shows an empty state instead of podcast channel rows.
 - App shell: main.dart, pubspec.yaml and pubspec.lock, version-check pages, and a
   local run script (scripts/flutter-run-local.ps1).
 - Supabase: configuration and an AI chat function (supabase/functions/nvidia-chat).
