@@ -197,15 +197,16 @@ class _NoteDetailPageState extends State<NoteDetailPage> {
             ),
             title: const SizedBox.shrink(),
             actions: [
-              _roundAction(
-                context,
-                icon: note.isFavorite
-                    ? Icons.star_rounded
-                    : Icons.star_border_rounded,
-                tooltip: note.isFavorite ? 'Remove favorite' : 'Favorite',
-                onPressed: () => _toggleFavorite(note),
-                selected: note.isFavorite,
-              ),
+              if (note.conversationMessages?.isNotEmpty != true)
+                _roundAction(
+                  context,
+                  icon: note.isFavorite
+                      ? Icons.star_rounded
+                      : Icons.star_border_rounded,
+                  tooltip: note.isFavorite ? 'Remove favorite' : 'Favorite',
+                  onPressed: () => _toggleFavorite(note),
+                  selected: note.isFavorite,
+                ),
               _roundAction(
                 context,
                 icon: Icons.share_rounded,

@@ -54,6 +54,7 @@ void main() {
       await tester.pump();
 
       expect(find.text('Subscriptions'), findsOneWidget);
+      expect(find.text('Coming soon'), findsOneWidget);
       expect(find.text('Library'), findsOneWidget);
       expect(find.text('Playlist'), findsNothing);
       expect(find.text('Playlists'), findsNothing);
@@ -72,7 +73,7 @@ void main() {
     },
   );
 
-  testWidgets('Subscriptions entry opens the empty subscriptions screen', (
+  testWidgets('Subscriptions entry is marked coming soon and does not navigate', (
     tester,
   ) async {
     await tester.pumpWidget(const MaterialApp(home: MenuPage()));
@@ -85,8 +86,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
 
     expect(find.text('Subscriptions'), findsOneWidget);
-    expect(find.text('No subscriptions yet'), findsOneWidget);
-    expect(find.byType(ListView), findsNothing);
-    expect(find.byIcon(Icons.podcasts_rounded), findsNothing);
+    expect(find.text('Coming soon'), findsOneWidget);
+    expect(find.text('No subscriptions yet'), findsNothing);
+    expect(find.byType(MenuPage), findsOneWidget);
   });
 }

@@ -621,7 +621,7 @@ void main() {
     },
   );
 
-  testWidgets('silent recognizer endings restart at most three times', (
+  testWidgets('silent recognizer endings keep restarting until Stop', (
     tester,
   ) async {
     final _FakeSttAdapter stt = _FakeSttAdapter();
@@ -631,22 +631,19 @@ void main() {
     await _startMic(tester);
     expect(stt.startCount, 1);
 
-    for (var i = 0; i < 3; i++) {
+    for (var i = 0; i < 5; i++) {
       stt.noMatch();
       await tester.pump();
       await tester.pump();
       expect(stt.startCount, i + 2);
     }
 
-    stt.noMatch();
-    await tester.pump();
-    await tester.pump();
-    expect(stt.startCount, 4);
+    expect(find.text('Stop'), findsOneWidget);
+    await tester.tap(find.text('Stop'));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(stt.startCount, 6);
     expect(find.text('Start conversation'), findsOneWidget);
-    expect(
-      find.text('No speech was recognized. Tap Start conversation to resume.'),
-      findsOneWidget,
-    );
     expect(session.messages, isEmpty);
     expect(ai.requests, 0);
   });

@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:bunpod/bunpod.dart';
-import 'package:material_ui/material_ui.dart' hide MaterialShapes, MaterialShapeBorder, RoundedPolygon, CornerRounding;
+import 'package:material_ui/material_ui.dart'
+    hide MaterialShapes, MaterialShapeBorder, RoundedPolygon, CornerRounding;
 import 'package:flutter/rendering.dart';
 import 'package:expressive_shapes/expressive_shapes.dart';
 import 'package:motor/motor.dart';
@@ -103,7 +105,8 @@ class _FeedChannelTabsState extends State<FeedChannelTabs>
   void didUpdateWidget(FeedChannelTabs oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.selectedCategory != widget.selectedCategory ||
-        oldWidget.selected != widget.selected) {
+        oldWidget.selected != widget.selected ||
+        !listEquals(oldWidget.categories, widget.categories)) {
       _scrollToSelected();
     }
   }
@@ -196,36 +199,44 @@ class _FeedChannelTabsState extends State<FeedChannelTabs>
       ];
     }
 
+    Widget buildChip(_Tab tab) {
+      final bool isSelected = _isCategoryMode
+          ? (tab.category == null
+                ? widget.selectedCategory == null
+                : widget.selectedCategory?.toLowerCase() ==
+                      tab.category?.toLowerCase())
+          : tab.channel?.id == widget.selected?.id;
+
+      return _FilterChip(
+        key: _keys.putIfAbsent(tab.tabKey, GlobalKey.new),
+        tab: tab,
+        selected: isSelected,
+        onTap: () {
+          if (_isCategoryMode) {
+            widget.onCategorySelected?.call(tab.category);
+          } else {
+            widget.onSelected?.call(tab.channel);
+          }
+        },
+      );
+    }
+
     return SizedBox(
       height: widget.height,
-      child: ListView.builder(
-        controller: _scroll,
-        scrollDirection: Axis.horizontal,
-        padding: widget.padding,
-        itemCount: tabs.length,
-        itemBuilder: (context, i) {
-          final _Tab tab = tabs[i];
-          final bool isSelected = _isCategoryMode
-              ? (tab.category == null
-                  ? widget.selectedCategory == null
-                  : widget.selectedCategory?.toLowerCase() ==
-                      tab.category?.toLowerCase())
-              : tab.channel?.id == widget.selected?.id;
-
-          return _FilterChip(
-            key: _keys.putIfAbsent(tab.tabKey, GlobalKey.new),
-            tab: tab,
-            selected: isSelected,
-            onTap: () {
-              if (_isCategoryMode) {
-                widget.onCategorySelected?.call(tab.category);
-              } else {
-                widget.onSelected?.call(tab.channel);
-              }
-            },
-          );
-        },
-      ),
+      child: _isCategoryMode
+          ? SingleChildScrollView(
+              controller: _scroll,
+              scrollDirection: Axis.horizontal,
+              padding: widget.padding,
+              child: Row(children: tabs.map(buildChip).toList()),
+            )
+          : ListView.builder(
+              controller: _scroll,
+              scrollDirection: Axis.horizontal,
+              padding: widget.padding,
+              itemCount: tabs.length,
+              itemBuilder: (_, i) => buildChip(tabs[i]),
+            ),
     );
   }
 }

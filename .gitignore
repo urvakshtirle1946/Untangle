@@ -56,3 +56,13 @@ google-services.json
 GoogleService-Info.plist
 firebase_options.dart
 firebase.json
+
+dumps_*/
+device_info.txt
+plugin_evidence*.txt
+baseline.m4a
+android/build/
+supabase/.temp/
+
+components/
+lib/utils.ts

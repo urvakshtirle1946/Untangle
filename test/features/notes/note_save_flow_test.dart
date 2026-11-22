@@ -313,6 +313,8 @@ void main() {
       expect(saved, isNotNull);
       expect(saved!.userId, 'user-1');
       expect(saved.category, 'Work');
+      expect(cubit.state.selectedCategory, 'Work');
+      expect(cubit.state.filteredNotes.single.id, saved.id);
       expect(saved.title, 'First line');
       expect(saved.transcript, 'First line\nFinal words');
       expect(saved.hasAudio, isTrue);

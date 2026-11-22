@@ -60,9 +60,12 @@ class _BodyState extends State<_Body> {
             MenuTile(
               icon: Icons.podcasts_outlined,
               title: 'Subscriptions',
-              onTap: () {
-                Navigator.of(context).push(SubscriptionsPage.route());
-              },
+              trailing: Text(
+                'Coming soon',
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
             ),
           ],
         ),

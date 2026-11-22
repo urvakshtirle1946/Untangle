@@ -1,11 +1,23 @@
 import 'package:bunpod/bunpod.dart';
+import 'package:bunpod/features/startup/android_startup_splash.dart';
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, debugPrint, kDebugMode;
 import 'package:material_ui/material_ui.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:userorient_flutter/userorient_flutter.dart';
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  if (defaultTargetPlatform == TargetPlatform.android) {
+    runApp(const _AndroidStartupBootstrap());
+    return;
+  }
+
+  runApp(await _initializeApp());
+}
+
+Future<Widget> _initializeApp() async {
   // Load Supabase configuration from the bundled asset, then apply any
   // --dart-define overrides on top.
   await SupabaseConfig.load();
@@ -14,8 +26,7 @@ void main() async {
   if (configErr != null) {
     // Configuration is missing or still a placeholder.
     // Show a clear setup error instead of crashing or silently proceeding.
-    runApp(_ConfigErrorApp(message: configErr));
-    return;
+    return _ConfigErrorApp(message: configErr);
   }
 
   await Supabase.initialize(
@@ -64,7 +75,72 @@ void main() async {
     await locator<SecureStorageLocalData>().clearUser();
   }
 
-  runApp(App(signedIn: signedIn));
+  return App(signedIn: signedIn);
+}
+
+class _AndroidStartupBootstrap extends StatefulWidget {
+  const _AndroidStartupBootstrap();
+
+  @override
+  State<_AndroidStartupBootstrap> createState() =>
+      _AndroidStartupBootstrapState();
+}
+
+class _AndroidStartupBootstrapState extends State<_AndroidStartupBootstrap> {
+  late final Future<Widget> _destination = _initializeApp();
+  bool _splashFinished = false;
+  bool _routeReadinessLogged = false;
+  bool _routeOpenLogged = false;
+
+  void _onSplashFinished() {
+    if (_splashFinished || !mounted) return;
+    _startupLog('route_gate splash_finished');
+    setState(() => _splashFinished = true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<Widget>(
+      future: _destination,
+      builder: (context, snapshot) {
+        if (snapshot.hasData && _splashFinished) {
+          if (!_routeOpenLogged) {
+            _routeOpenLogged = true;
+            _startupLog('route_open result=destination');
+          }
+          return snapshot.data!;
+        }
+        if (snapshot.hasError && _splashFinished) {
+          if (!_routeOpenLogged) {
+            _routeOpenLogged = true;
+            _startupLog('route_open result=error');
+          }
+          return const _ConfigErrorApp(
+            message: 'Untangle could not start. Please try again.',
+          );
+        }
+        if ((snapshot.hasData || snapshot.hasError) && !_routeReadinessLogged) {
+          _routeReadinessLogged = true;
+          _startupLog(
+            'route_ready result=${snapshot.hasData ? 'destination' : 'error'}',
+          );
+        }
+
+        return MaterialApp(
+          title: AppValues.title,
+          debugShowCheckedModeBanner: false,
+          themeMode: ThemeMode.system,
+          theme: MaterialThemes.light,
+          darkTheme: MaterialThemes.dark,
+          home: AndroidStartupSplash(onFinished: _onSplashFinished),
+        );
+      },
+    );
+  }
+}
+
+void _startupLog(String message) {
+  debugPrint('[startup-splash] $message');
 }
 
 // ---------------------------------------------------------------------------

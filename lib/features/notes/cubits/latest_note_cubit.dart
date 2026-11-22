@@ -166,6 +166,7 @@ class LatestNoteCubit extends Cubit<LatestNoteState> {
   final Set<String> _summaryStartedIds = <String>{};
   final Set<String> _summaryRetryInFlight = <String>{};
   String? _currentUserId;
+  int _notesRevision = 0;
 
   Future<void> load({String? userId, String? category}) async {
     emit(
@@ -201,6 +202,7 @@ class LatestNoteCubit extends Cubit<LatestNoteState> {
       emit(const LatestNoteEmpty());
       return;
     }
+    final int notesRevision = _notesRevision;
     final List<Note> fetchedNotes = await LocalNoteAudioStore().attachToNotes(
       await _repository.getNotes(userId: effectiveUserId),
     );
@@ -220,6 +222,12 @@ class LatestNoteCubit extends Cubit<LatestNoteState> {
       } else {
         allNotes.add(note);
       }
+    }
+    // An older refresh can finish after a save and omit the newly saved note.
+    if (isClosed ||
+        _currentUserId != effectiveUserId ||
+        _notesRevision != notesRevision) {
+      return;
     }
     final List<String> categories = Note.extractCategories(allNotes);
 
@@ -376,6 +384,7 @@ class LatestNoteCubit extends Cubit<LatestNoteState> {
   }
 
   void setNote(Note? note) {
+    _notesRevision++;
     if (note != null) {
       final List<Note> notes = [
         ...state.notes.where((n) => n.id != note.id),

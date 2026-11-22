@@ -88,6 +88,43 @@ class _FeedView extends StatefulWidget {
 }
 
 class _FeedViewState extends State<_FeedView> {
+  final _notesScroll = GlobalKey<NestedScrollViewState>();
+
+  Future<void> _composeNote(LatestNoteCubit cubit) async {
+    final Note? note = await CreateNoteScreen.open(
+      context,
+      latestNoteCubit: cubit,
+    );
+    if (!mounted || note == null) return;
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+    final state = cubit.state;
+    final bool categoryMatches =
+        note.category != null &&
+        state.selectedCategory?.toLowerCase() ==
+            note.category!.trim().toLowerCase();
+    final bool noteInFilter = state.filteredNotes.any(
+      (item) => item.id == note.id,
+    );
+    debugPrint(
+      '[note-category] event=feed_after_pop category_matches=$categoryMatches '
+      'saved_note_visible=$noteInFilter',
+    );
+    if (!categoryMatches || !noteInFilter) return;
+    final scroll = _notesScroll.currentState;
+    if (scroll == null) return;
+    if (scroll.innerController.hasClients) {
+      scroll.innerController.jumpTo(
+        scroll.innerController.position.minScrollExtent,
+      );
+    }
+    if (scroll.outerController.hasClients) {
+      scroll.outerController.jumpTo(
+        scroll.outerController.position.maxScrollExtent,
+      );
+    }
+  }
+
   Episode? _playing;
 
   @override
@@ -119,10 +156,9 @@ class _FeedViewState extends State<_FeedView> {
     final ColorScheme cs = Theme.of(context).colorScheme;
     final TextTheme tt = Theme.of(context).textTheme;
 
-    final LatestNoteCubit noteCubit =
-        locator.isRegistered<LatestNoteCubit>()
-            ? locator<LatestNoteCubit>()
-            : LatestNoteCubit();
+    final LatestNoteCubit noteCubit = locator.isRegistered<LatestNoteCubit>()
+        ? locator<LatestNoteCubit>()
+        : LatestNoteCubit();
 
     return Scaffold(
       backgroundColor: cs.surface,
@@ -135,6 +171,7 @@ class _FeedViewState extends State<_FeedView> {
             notificationPredicate: (notification) =>
                 notification.depth >= 1 && notification.depth <= 2,
             child: NestedScrollView(
+              key: _notesScroll,
               headerSliverBuilder: (context, innerScrolled) {
                 return [
                   SliverToBoxAdapter(
@@ -168,8 +205,19 @@ class _FeedViewState extends State<_FeedView> {
                   ),
                 ];
               },
-              body: BlocBuilder<LatestNoteCubit, LatestNoteState>(
+              body: BlocConsumer<LatestNoteCubit, LatestNoteState>(
                 bloc: noteCubit,
+                listenWhen: (previous, current) =>
+                    previous.selectedCategory != current.selectedCategory ||
+                    previous.filteredNotes.length !=
+                        current.filteredNotes.length,
+                listener: (_, state) {
+                  debugPrint(
+                    '[note-category] event=feed_state_received '
+                    'category_selected=${state.selectedCategory != null} '
+                    'filtered_notes=${state.filteredNotes.length}',
+                  );
+                },
                 builder: (context, noteState) {
                   final List<Note> notes = noteState.filteredNotes;
                   return CustomScrollView(
@@ -191,8 +239,9 @@ class _FeedViewState extends State<_FeedView> {
                                   Icon(
                                     Icons.notes_rounded,
                                     size: 48,
-                                    color: cs.onSurfaceVariant
-                                        .withValues(alpha: 0.4),
+                                    color: cs.onSurfaceVariant.withValues(
+                                      alpha: 0.4,
+                                    ),
                                   ),
                                   const SizedBox(height: 16),
                                   Text(
@@ -209,8 +258,9 @@ class _FeedViewState extends State<_FeedView> {
                                     'Notes will appear here once saved.',
                                     textAlign: TextAlign.center,
                                     style: tt.bodySmall?.copyWith(
-                                      color: cs.onSurfaceVariant
-                                          .withValues(alpha: 0.7),
+                                      color: cs.onSurfaceVariant.withValues(
+                                        alpha: 0.7,
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -256,7 +306,7 @@ class _FeedViewState extends State<_FeedView> {
                 child: InkWell(
                   onTap: () {
                     HapticsHelper.selection();
-                    CreateNoteScreen.open(context);
+                    _composeNote(noteCubit);
                   },
                   child: SizedBox(
                     width: 56,

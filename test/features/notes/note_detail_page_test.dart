@@ -44,6 +44,9 @@ void main() {
     (tester) async {
       await tester.pumpWidget(_wrap(NoteDetailPage(note: record)));
       await tester.pump();
+      expect(find.byTooltip('Favorite'), findsOneWidget);
+      expect(find.byTooltip('Share note'), findsOneWidget);
+      expect(find.byTooltip('More'), findsOneWidget);
       expect(find.byTooltip('Play recording'), findsOneWidget);
       final material_ui.FloatingActionButton audioButton = tester.widget(
         find.byType(material_ui.FloatingActionButton),
@@ -89,11 +92,17 @@ void main() {
   ) async {
     await tester.pumpWidget(_wrap(NoteDetailPage(note: conversation)));
     await tester.pump();
+    expect(find.byTooltip('Favorite'), findsNothing);
+    expect(find.byTooltip('Remove favorite'), findsNothing);
+    expect(find.byTooltip('Share note'), findsOneWidget);
+    expect(find.byTooltip('More'), findsOneWidget);
     expect(find.byTooltip('Play recording'), findsOneWidget);
     await tester.tap(find.text('Transcript'));
     await tester.pump(const Duration(milliseconds: 350));
     expect(find.text('Let’s visit Jaipur.'), findsOneWidget);
     expect(find.text('What would you like to see?'), findsOneWidget);
+    expect(find.text('AI'), findsWidgets);
+    expect(find.byIcon(material_ui.Icons.auto_awesome_rounded), findsNWidgets(2));
     expect(find.text('Audio not available'), findsNothing);
     expect(find.text('Summary unavailable'), findsNothing);
   });

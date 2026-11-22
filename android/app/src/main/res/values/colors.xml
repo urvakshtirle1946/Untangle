@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Average of the unobstructed top region in the MP4's first frame. -->
+    <color name="splash_background">#831FF0</color>
+</resources>

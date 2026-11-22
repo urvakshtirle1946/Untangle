@@ -52,13 +52,20 @@ class CreateNoteScreen extends StatefulWidget {
   final VoiceNoteAudioCapture Function()? voiceAudioCaptureFactory;
   final LocalNoteAudioStore? localNoteAudioStore;
 
-  static void open(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => const CreateNoteScreen(),
-        fullscreenDialog: true,
-      ),
+  static Future<Note?> open(
+    BuildContext context, {
+    LatestNoteCubit? latestNoteCubit,
+  }) async {
+    final route = MaterialPageRoute<Note>(
+      builder: (_) => CreateNoteScreen(latestNoteCubit: latestNoteCubit),
+      fullscreenDialog: true,
     );
+    final Note? note = await Navigator.of(context).push(route);
+    await route.completed;
+    debugPrint(
+      '[note-category] event=composer_route_popped saved=${note != null}',
+    );
+    return note;
   }
 
   @override
@@ -563,11 +570,9 @@ class _CreateNoteScreenState extends State<CreateNoteScreen>
         try {
           await capture.dispose();
         } catch (_) {}
-        if (kDebugMode) {
-          debugPrint(
-            '[voice-note-audio] event=recording_start_failed error_type=${error.runtimeType}',
-          );
-        }
+        debugPrint(
+          '[voice-note-audio] event=shared_pcm_capture_start_failed mode=${isConversation ? 'conversation' : 'record'} error_type=${error.runtimeType}',
+        );
         _showAudioCaptureFailure();
       }
       return;
@@ -724,6 +729,24 @@ class _CreateNoteScreenState extends State<CreateNoteScreen>
     (int total, VoiceAudioSegment segment) => total + segment.fileSizeBytes,
   );
 
+  Future<void> _closeAfterVoiceNoteSave(Note note) async {
+    if (!mounted) return;
+    final String? category = note.category;
+    // The feed underneath this route uses the same cubit.
+    if (category != null && category.trim().isNotEmpty) {
+      _latestNoteCubit.selectCategory(category);
+      final LatestNoteState state = _latestNoteCubit.state;
+      debugPrint(
+        '[note-category] event=category_state_set '
+        'matches=${state.selectedCategory?.toLowerCase() == category.trim().toLowerCase()} '
+        'saved_note_visible=${state.filteredNotes.any((item) => item.id == note.id)}',
+      );
+    }
+    _allowPop = true;
+    await WidgetsBinding.instance.endOfFrame;
+    if (mounted) Navigator.of(context).pop(note);
+  }
+
   Future<void> _saveLocalAudioReference(Note note) async {
     if (note.localAudioPaths.isEmpty && !note.audioRecordingFailed) return;
     await _localNoteAudioStore.save(
@@ -763,8 +786,9 @@ class _CreateNoteScreenState extends State<CreateNoteScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    // A permission prompt can briefly take focus during microphone startup.
+    // Release the mic when the app is actually hidden or backgrounded.
     if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive ||
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.detached) {
       unawaited(_pauseActiveServices());
@@ -1055,11 +1079,7 @@ class _CreateNoteScreenState extends State<CreateNoteScreen>
       _transcriptState.clear();
       _clearVoiceAudioSession();
       _pendingSaveId = null;
-      if (mounted) {
-        _allowPop = true;
-        await WidgetsBinding.instance.endOfFrame;
-        if (mounted) Navigator.of(context).pop(note);
-      }
+      await _closeAfterVoiceNoteSave(note);
     } finally {
       _finishInProgress = false;
     }
@@ -1288,11 +1308,7 @@ class _CreateNoteScreenState extends State<CreateNoteScreen>
       _conversationVoiceSession.value = false;
       _clearVoiceAudioSession();
       _pendingSaveId = null;
-      if (mounted) {
-        _allowPop = true;
-        await WidgetsBinding.instance.endOfFrame;
-        if (mounted) Navigator.of(context).pop(note);
-      }
+      await _closeAfterVoiceNoteSave(note);
     } finally {
       _finishInProgress = false;
     }
@@ -1491,13 +1507,11 @@ class _VoiceTwoStateLayoutState extends State<_VoiceTwoStateLayout>
   int _listenGeneration = 0;
   int? _sttSessionGeneration;
   bool _currentConversationListenAcknowledged = false;
-  int _consecutiveSilentRestarts = 0;
   int? _recordSessionGeneration;
   int? _recordListenGeneration;
   bool _recordTranscriptionReady = false;
   bool _recordFinalConsumed = false;
-  bool _recordTranscriptionErrorShown = false;
-  static const int _maxSilentRestarts = 3;
+  String? _recordTranscriptionError;
 
   @override
   void initState() {
@@ -1578,7 +1592,6 @@ class _VoiceTwoStateLayoutState extends State<_VoiceTwoStateLayout>
       }
       if (finalText.isNotEmpty && finalText != _lastHandledConversationFinal) {
         _clearFinalResultWait();
-        _consecutiveSilentRestarts = 0;
         _lastHandledConversationFinal = finalText;
         _lastHandledConversationPartial = '';
         _finalToRequestTimer = Stopwatch()..start();
@@ -1663,11 +1676,8 @@ class _VoiceTwoStateLayoutState extends State<_VoiceTwoStateLayout>
   }) {
     _recordTranscriptionReady = false;
     _recordTranscriptDiag('record_transcript_error code=$code');
-    if (_recordTranscriptionErrorShown || !mounted) return;
-    _recordTranscriptionErrorShown = true;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$message Recording will continue with audio.')),
-    );
+    if (_recordTranscriptionError != null || !mounted) return;
+    setState(() => _recordTranscriptionError = message);
   }
 
   void _onRecordSttChanged() {
@@ -1806,24 +1816,7 @@ class _VoiceTwoStateLayoutState extends State<_VoiceTwoStateLayout>
       _isActive = false;
       widget.onActiveStateChanged(false);
     }
-    if (_consecutiveSilentRestarts >= _maxSilentRestarts) {
-      _diag(
-        'event=silent_restart_limit_reached',
-        details: 'consecutive_silent_restarts=$_consecutiveSilentRestarts',
-      );
-      widget.conversationVoiceSession.value = false;
-      widget.conversationSession.setError(
-        'No speech was recognized. Tap Start conversation to resume.',
-      );
-      if (mounted) setState(() {});
-      return;
-    }
-    _consecutiveSilentRestarts++;
-    _diag(
-      'event=silent_restart_requested',
-      details:
-          'consecutive_silent_restarts=$_consecutiveSilentRestarts limit=$_maxSilentRestarts',
-    );
+    _diag('event=silent_restart_requested');
     unawaited(_startRecognitionForNextTurn());
   }
 
@@ -1893,7 +1886,7 @@ class _VoiceTwoStateLayoutState extends State<_VoiceTwoStateLayout>
       widget.voiceMode == _VoiceMode.conversation &&
       widget.conversationVoiceSession.value &&
       WidgetsBinding.instance.lifecycleState != AppLifecycleState.paused &&
-      WidgetsBinding.instance.lifecycleState != AppLifecycleState.inactive &&
+      WidgetsBinding.instance.lifecycleState != AppLifecycleState.hidden &&
       WidgetsBinding.instance.lifecycleState != AppLifecycleState.detached;
 
   Future<void> _startRecognitionForNextTurn() async {
@@ -2021,94 +2014,6 @@ class _VoiceTwoStateLayoutState extends State<_VoiceTwoStateLayout>
     super.dispose();
   }
 
-  Future<void> _resumeRecognition() async {
-    if (_isStarting) return;
-    if (widget.voiceMode == _VoiceMode.record) {
-      await _resumeRecordRecognition();
-      return;
-    }
-    _isStarting = true;
-    try {
-      await widget.onStopPlayback();
-      await widget.onStartAudioCapture();
-      widget.transcriptState.startRecording();
-      _sttSessionGeneration ??= widget.sttAdapter.beginSession();
-      _listenGeneration = widget.onListenStartRequested();
-      await widget.sttAdapter.startForSession(
-        _sttSessionGeneration!,
-        _listenGeneration,
-      );
-      if (!mounted) return;
-      setState(() => _isActive = true);
-      widget.onActiveStateChanged(true);
-      widget.onTranscriptRevealed(true);
-      _controller.forward();
-    } catch (_) {
-      await widget.onStopAudioCapture();
-      widget.transcriptState.stopRecording();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Speech recognition could not resume.')),
-        );
-      }
-    } finally {
-      _isStarting = false;
-    }
-  }
-
-  Future<void> _resumeRecordRecognition() async {
-    _isStarting = true;
-    try {
-      await widget.onStopPlayback();
-      if (!_recordTranscriptionReady) {
-        if (widget.sttAdapter is! PcmInputSttAdapter) {
-          _showRecordTranscriptionError(
-            'This recognizer cannot use the shared recording audio.',
-            code: 'shared_pcm_not_supported',
-          );
-          return;
-        }
-        _recordTranscriptionErrorShown = false;
-        _recordSessionGeneration = widget.sttAdapter.beginSession();
-        try {
-          final SttInitResult init = await widget.sttAdapter.initialize();
-          if (init != SttInitResult.ready) {
-            _showRecordTranscriptionError(
-              'Speech recognition is unavailable.',
-              code: widget.sttAdapter.lastErrorCode.isEmpty
-                  ? 'initialization_failed'
-                  : widget.sttAdapter.lastErrorCode,
-            );
-            return;
-          }
-          _recordTranscriptionReady = true;
-        } catch (error) {
-          _showRecordTranscriptionError(
-            'Speech recognition is unavailable.',
-            code: error.runtimeType.toString(),
-          );
-          return;
-        }
-      }
-      await widget.onStartAudioCapture();
-      if (!mounted) return;
-      widget.transcriptState.resumeRecording();
-      setState(() => _isActive = true);
-      widget.onActiveStateChanged(true);
-      _controller.forward();
-      if (widget.hasPcmAudioCapture()) {
-        await _startRecordRecognition();
-      }
-    } catch (error) {
-      _showRecordTranscriptionError(
-        'Speech recognition could not resume.',
-        code: error.runtimeType.toString(),
-      );
-    } finally {
-      _isStarting = false;
-    }
-  }
-
   Future<void> _startConversationVoiceSession() async {
     if (!widget.conversationSession.isConnected) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2124,7 +2029,6 @@ class _VoiceTwoStateLayoutState extends State<_VoiceTwoStateLayout>
     _conversationHasNewTurn = false;
     _lastHandledConversationFinal = '';
     _lastHandledConversationPartial = '';
-    _consecutiveSilentRestarts = 0;
     _clearFinalResultWait();
     _listenTimer = Stopwatch()..start();
     _sttSessionGeneration = widget.sttAdapter.beginSession();
@@ -2271,7 +2175,7 @@ class _VoiceTwoStateLayoutState extends State<_VoiceTwoStateLayout>
         _controller.forward();
         final bool pcmRecognizer = widget.sttAdapter is PcmInputSttAdapter;
         _recordTranscriptionReady = false;
-        _recordTranscriptionErrorShown = false;
+        _recordTranscriptionError = null;
         try {
           await widget.onStopPlayback();
           if (pcmRecognizer) {
@@ -2440,7 +2344,7 @@ class _VoiceTwoStateLayoutState extends State<_VoiceTwoStateLayout>
                           ? _RecordTranscriptPanel(
                               state: widget.transcriptState,
                               adapter: widget.sttAdapter,
-                              onResume: _resumeRecognition,
+                              errorMessage: _recordTranscriptionError,
                             )
                           : _ConversationChatPanel(
                               session: widget.conversationSession,
@@ -2572,12 +2476,12 @@ class _RecordTranscriptPanel extends StatefulWidget {
   const _RecordTranscriptPanel({
     required this.state,
     required this.adapter,
-    required this.onResume,
+    this.errorMessage,
   });
 
   final TranscriptState state;
   final SttAdapter adapter;
-  final Future<void> Function() onResume;
+  final String? errorMessage;
 
   @override
   State<_RecordTranscriptPanel> createState() => _RecordTranscriptPanelState();
@@ -2725,22 +2629,13 @@ class _RecordTranscriptPanelState extends State<_RecordTranscriptPanel> {
                 ),
               ],
             ),
-            if (widget.adapter.lastError.isNotEmpty)
+            if (widget.errorMessage != null ||
+                widget.adapter.lastError.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
                 child: Text(
-                  widget.adapter.lastError,
+                  widget.errorMessage ?? widget.adapter.lastError,
                   style: tt.labelSmall?.copyWith(color: cs.error),
-                ),
-              ),
-            if (widget.adapter.status == SttStatus.stopped ||
-                widget.adapter.status == SttStatus.error)
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton.icon(
-                  onPressed: widget.onResume,
-                  icon: const Icon(Icons.mic_rounded),
-                  label: const Text('Resume recognition'),
                 ),
               ),
           ],
@@ -2774,6 +2669,9 @@ class _CategoryDialogState extends State<_CategoryDialog> {
         ? _newCategoryController.text.trim()
         : (_selectedCategory ?? '').trim();
     if (category.isEmpty) return;
+    debugPrint(
+      '[note-category] event=category_confirmed new_category=${!widget.categories.any((item) => item.toLowerCase() == category.toLowerCase())}',
+    );
     Navigator.of(context).pop(category);
   }
 

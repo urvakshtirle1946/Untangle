@@ -58,6 +58,7 @@ dependencies:
   flutter_email_sender: ^11.2.0
   speech_to_text: ^7.5.0
   record: ^6.2.1
+  video_player: ^2.14.1
   share_plus: 13.3.1
   path_provider: ^2.1.6
   sherpa_onnx: 2.0.1
@@ -74,6 +75,7 @@ flutter_launcher_icons:
   android: true
   ios: true
   image_path: assets/app-icon.png
+  image_path_android: assets/android-launcher-icon.png
   remove_alpha_ios: true
 
 flutter:
@@ -85,6 +87,9 @@ flutter:
   assets:
     - assets/config/
     - assets/models/sherpa_onnx_streaming_zipformer_en_int8/
+    - assets/splash/untangle-intro.mp4
+    - assets/splash/untangle-opening-frame.jpg
+    - assets/splash/untangle-mascot-still.png
     - assets/vectors/
     - assets/images/
 

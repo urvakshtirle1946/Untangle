@@ -3,6 +3,8 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sherpa_onnx/sherpa_onnx.dart' as sherpa;
@@ -30,6 +32,21 @@ class SherpaStreamingSttAdapter extends SttAdapter
     'tokens.txt': 5048,
     'bpe.model': 244865,
   };
+
+  // Hashes identify this model revision, including the canonical LF token file.
+  static const Map<String, String> _modelHashes = {
+    'encoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx':
+        '563fde436d16cf7607cf408cd6b30909819d03162652ef389c2450ced3f45ac1',
+    'decoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx':
+        '98da299f471e38bb4e1a8df579b8cc9122d6039576a77e357b3c60f17dd83b02',
+    'joiner-epoch-99-avg-1-chunk-16-left-128.int8.onnx':
+        'd944208d660d67c8d72cd2acaeac971fa5ceb8c80e76c1968148846fedd6e297',
+    'tokens.txt':
+        '49e3c2646595fd907228b3c6787069658f67b17377c60aeb8619c4551b2316fb',
+    'bpe.model':
+        'c53433de083c4a6ad12d034550ef22de68cec62c4f58932a7b6b8b2f1e743fa5',
+  };
+  static Future<Directory>? _modelPreparation;
 
   sherpa.OnlineRecognizer? _recognizer;
   sherpa.OnlineStream? _stream;
@@ -146,8 +163,10 @@ class SherpaStreamingSttAdapter extends SttAdapter
   Future<SttInitResult> initialize() async {
     _lastError = '';
     _lastErrorCode = '';
+    String stage = 'model_files';
     try {
       final Directory modelDirectory = await _copyModelAssets();
+      stage = 'native_bindings';
       sherpa.initBindings();
       final String encoder = _path(
         modelDirectory,
@@ -169,6 +188,7 @@ class SherpaStreamingSttAdapter extends SttAdapter
         modelDirectory,
         _modelFiles[4],
       );
+      stage = 'recognizer';
       _recognizer ??= sherpa.OnlineRecognizer(
         sherpa.OnlineRecognizerConfig(
           model: sherpa.OnlineModelConfig(
@@ -189,9 +209,8 @@ class SherpaStreamingSttAdapter extends SttAdapter
           enableEndpoint: true,
           rule1MinTrailingSilence: 2.4,
           rule2MinTrailingSilence: 1.2,
-          // Rule 3 ends an utterance once its duration exceeds this value;
-          // 0.3 seconds caused every listen generation to endpoint immediately.
-          rule3MinUtteranceLength: 20.0,
+          // Segment spoken turns at a pause, with no fixed speech length limit.
+          rule3MinUtteranceLength: double.infinity,
         ),
       );
       _setStatus(SttStatus.stopped);
@@ -199,6 +218,10 @@ class SherpaStreamingSttAdapter extends SttAdapter
     } catch (error) {
       _lastErrorCode = 'error_sherpa_initialize';
       _lastError = 'On-device speech recognition could not initialize.';
+      debugPrint(
+        '[voice-note-audio] event=stt_initialize_failed stage=$stage '
+        'error_type=${error.runtimeType} message=$error',
+      );
       _diag(
         'event=recognizer_initialize_failed error_type=${error.runtimeType}',
       );
@@ -207,32 +230,125 @@ class SherpaStreamingSttAdapter extends SttAdapter
     }
   }
 
-  Future<Directory> _copyModelAssets() async {
+  Future<Directory> _copyModelAssets() =>
+      _modelPreparation ??= _prepareModelAssets().whenComplete(() {
+        _modelPreparation = null;
+      });
+
+  Future<Directory> _prepareModelAssets() async {
+    _modelLog('step=resolve_support_directory');
     final Directory support = await getApplicationSupportDirectory();
     final Directory directory = Directory(
       '${support.path}${Platform.pathSeparator}untangle_sherpa_en_int8',
     );
+    _modelLog('step=create_model_directory');
     await directory.create(recursive: true);
     for (final String name in _modelFiles) {
-      final File file = File(_path(directory, name));
-      final int expectedLength = _expectedAssetSizes[name]!;
-      if (await file.exists() && await file.length() == expectedLength) {
-        continue;
-      }
-      if (await file.exists()) await file.delete();
-      final ByteData data = await rootBundle.load('$_assetDirectory/$name');
-      final File temporary = File('${file.path}.partial');
-      await temporary.writeAsBytes(
-        data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
-        flush: true,
-      );
-      if (await temporary.length() != expectedLength) {
-        await temporary.delete();
-        throw StateError('A packaged on-device model file is incomplete.');
-      }
-      await temporary.rename(file.path);
+      await _installModelFile(directory, name);
     }
     return directory;
+  }
+
+  Future<void> _installModelFile(Directory directory, String name) async {
+    final File file = File(_path(directory, name));
+    final File partial = File('${file.path}.partial');
+    final int expected = _expectedAssetSizes[name]!;
+    final String hash = _modelHashes[name]!;
+    final String fields = 'file=$name expected_bytes=$expected';
+    String step = 'inspect_cache';
+    int? actual;
+    try {
+      if (await partial.exists()) {
+        step = 'delete_stale_partial';
+        _modelLog('$fields step=$step actual_bytes=${await partial.length()}');
+        await partial.delete();
+      }
+      step = 'verify_cache';
+      actual = await file.exists() ? await file.length() : null;
+      final bool valid =
+          actual == expected &&
+          (await sha256.bind(file.openRead()).single).toString() == hash;
+      final String cacheResult = valid
+          ? 'verified'
+          : actual == null
+          ? 'missing'
+          : actual != expected
+          ? 'size_mismatch'
+          : 'hash_mismatch';
+      _modelLog('$fields step=$step actual_bytes=$actual result=$cacheResult');
+      if (valid) return;
+
+      step = 'load_asset';
+      actual = null;
+      _modelLog('$fields step=$step actual_bytes=unknown');
+      final ByteData data = await rootBundle.load('$_assetDirectory/$name');
+      Uint8List bytes = data.buffer.asUint8List(
+        data.offsetInBytes,
+        data.lengthInBytes,
+      );
+      actual = bytes.length;
+      _modelLog('$fields step=$step actual_bytes=$actual result=loaded');
+      if (name == 'tokens.txt') {
+        final String normalized = String.fromCharCodes(bytes)
+            .replaceAll('\r\n', '\n');
+        bytes = Uint8List.fromList(normalized.codeUnits);
+        actual = bytes.length;
+        _modelLog('$fields step=normalize_line_endings actual_bytes=$actual');
+      }
+      step = 'verify_asset';
+      if (actual != expected || sha256.convert(bytes).toString() != hash) {
+        throw StateError(
+          'Bundled model file $name failed size or SHA-256 verification. Expected $expected bytes, got $actual.',
+        );
+      }
+      _modelLog('$fields step=$step actual_bytes=$actual result=verified');
+      step = 'delete_invalid_cache';
+      if (await file.exists()) {
+        _modelLog('$fields step=$step actual_bytes=${await file.length()}');
+        await file.delete();
+      }
+
+      for (int attempt = 1; attempt <= 2; attempt++) {
+        try {
+          step = 'write_partial';
+          actual = null;
+          _modelLog('$fields step=$step attempt=$attempt actual_bytes=unknown');
+          await partial.writeAsBytes(bytes, flush: true);
+          step = 'verify_partial';
+          actual = await partial.length();
+          _modelLog('$fields step=$step attempt=$attempt actual_bytes=$actual');
+          if (actual != expected ||
+              (await sha256.bind(partial.openRead()).single).toString() !=
+                  hash) {
+            throw StateError(
+              'Copied model file $name failed size or SHA-256 verification. Expected $expected bytes, got $actual.',
+            );
+          }
+          step = 'install_verified_copy';
+          await partial.rename(file.path);
+          _modelLog(
+            '$fields step=$step attempt=$attempt actual_bytes=$actual result=installed',
+          );
+          return;
+        } catch (error) {
+          if (attempt == 2) rethrow;
+          _modelLog(
+            '$fields step=$step attempt=$attempt actual_bytes=$actual result=retry error_type=${error.runtimeType} message=$error',
+          );
+          step = 'delete_failed_partial';
+          if (await partial.exists()) await partial.delete();
+        }
+      }
+    } catch (error) {
+      _modelLog(
+        '$fields step=$step actual_bytes=$actual result=failed error_type=${error.runtimeType} message=$error',
+      );
+      rethrow;
+    }
+  }
+
+  void _modelLog(String event) {
+    debugPrint('[voice-note-audio] event=stt_model $event');
   }
 
   String _path(Directory directory, String name) =>
@@ -334,7 +450,13 @@ class SherpaStreamingSttAdapter extends SttAdapter
         if (!_disposed) notifyListeners();
       }
       if (recognizer.isEndpoint(stream)) {
-        _finalizeCurrentTurn(result.text, reason: 'sherpa_endpoint');
+        if (result.text.trim().isEmpty) {
+          // Reset the silent decoder window while continuing to consume PCM.
+          recognizer.reset(stream);
+          _clearResult();
+        } else {
+          _finalizeCurrentTurn(result.text, reason: 'sherpa_endpoint');
+        }
       }
     } catch (error) {
       _logPcmSummary('sherpa_decode_error');

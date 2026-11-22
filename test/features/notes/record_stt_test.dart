@@ -219,7 +219,7 @@ void main() {
     expect(transcript.isRecording, isTrue);
     expect(
       find.text(
-        'Speech recognition is unavailable. Recording will continue with audio.',
+        'Speech recognition is unavailable.',
       ),
       findsOneWidget,
     );
@@ -337,7 +337,7 @@ void main() {
       await tester.pump();
       expect(find.text('Recognition error'), findsOneWidget);
       expect(find.text('Stop & finish'), findsOneWidget);
-      expect(find.text('Resume recognition'), findsOneWidget);
+      expect(find.text('Resume recognition'), findsNothing);
     },
   );
 }
